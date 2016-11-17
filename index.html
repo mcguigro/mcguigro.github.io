@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en"
+ <head>
+	<meta charset="utf-8">
+	<link rel="stylesheet" type="text/css" href="style.css">
+	<title>BLS API How-To Guide</title>
+ </head>
+<body>
+<h1>How-To Guide: Bureau of Labor Statistics API</h1>
+<h2>Important Links</h2>
+<ul>
+	<li><a href="http://www.bls.gov/developers/home.htm">BLS Developer Page</a> for API usage
+	<li><a href="http://www.bls.gov/help/hlpforma.htm">Series ID Formats</a> (more on that in a moment)
+</ul>
+<h2>Syntax for Version 1.0</h2>
+<p>We'll start with retrieving a single time series' worth of data from the BLS database.  This takes the form of a GET request.</p>
+
+<p>Suppose, for instance, that we want to analyze the non-seasonal-adjusted price of ground beef in the Miami-Fort Lauderdale area over the past 3 years.  Beginning at the <a href="http://www.bls.gov/help/hlpforma.htm">Series ID Formats</a> page, we navigate to the section on Inflation & Prices, which provides instructions on how to construct the Series ID.  Using the provided tables for Seasonal Adjustment Code, Area Code, and Item Code, we get a Series ID of <b>APUA320703112</b>.  For making the actual GET request (for example in Javascript), see the following example:</p>
+
+<p><pre class="code">var baseURL = 'http://api.bls.gov/publicAPI/v1/timeseries/data/';
+var payload = 'APUA320703112';
+var req = newXMLHttpRequest();
+req.open('GET', baseURL + payload, true);
+var res;
+req.addEventListener('load',function(){
+	if (req.status >= 200 && req.status < 400){
+		res = JSON.parse(req.Results.series[0].data);
+	} else {
+		console.log("Error in network request: " + request.statusText);
+	}
+});</pre></p>
+
+<p>The variable <b>res</b> will then be an array of JSON objects representing data points in the requested time series.  The actual data for each point is contained in the <b>value</b> attribute, also included are <b>year</b>, <b>period</b>, <b>periodName</b>, and <b>footnote</b> attributes to track the time period for each data point and to provide info on any special circumstances surrounding that data point.</p>
+
+<p>The BLS API allows for multiple series selections in a single request.  The generalization is fairly straightforward, the main notable difference being that now a POST request is required (for this and all other requests besides the single-series request above).  In Javascript for example:
+
+<p><pre class="code">var baseURL = 'http://api.bls.gov/publicAPI/v1/timeseries/data/';
+var req = new XMLHttpRequest();
+var payload = {seriesid:['APUA320703112', 'APUA104703112', 'APUA427703112']};
+req.open('POST', baseURL, true);
+req.setRequestHeader('Content-Type', 'application/json');
+var res = [];
+req.addEventListener('load',function(){
+	if (req.status >= 200 && req.status < 400){
+		res = JSON.parse(req.responseText).Results.series;
+	} else {
+		console.log("Error in network request: " + request.statusText);
+	}
+});
+req.send(JSON.stringify(payload));</pre></p>
+
+<p>This code will return time series for ground beef prices over the last three years in Miami-Fort Lauderdale, Pittsburgh, and Anchorage.  Each element in the <b>res</b> array is a JSON object with attributes <b>seriesID</b> (which echoes back the series ID code provided) and <b>data</b> which behaves as with a single series request.</p>
+
+<p>Of course, we would like to have more control over the time period the returned data represents.  We do this by supplying <b>startyear</b> and <b>endyear</b> attributes in the POST payload.  Note that even if are only requesting a single series, a POST request is still required here.  For example, we modify the above example to return data from 2003 to 2012 (the max time frame is 10 years):
+
+<p><pre class="code">var baseURL = 'http://api.bls.gov/publicAPI/v1/timeseries/data/';
+var req = new XMLHttpRequest();
+var payload = {seriesid:['APUA320703112', 'APUA104703112', 'APUA427703112'], startyear: 2003, endyear: 2012};
+req.open('POST', baseURL, true);
+req.setRequestHeader('Content-Type', 'application/json');
+var res = [];
+req.addEventListener('load',function(){
+	if (req.status >= 200 && req.status < 400){
+		res = JSON.parse(req.responseText).Results.series;
+	} else {
+		console.log("Error in network request: " + request.statusText);
+	}
+});
+req.send(JSON.stringify(payload));</pre></p>
+
+<h2>Version 2.0: Advantages and Differences</h2>
+<p>If you <a href="http://data.bls.gov/registrationEngine/">register</a> with the Bureau of Labor Statistics, you will receive a registration key which gives you access to Version 2.0 of the BLS Public Data API.  This allows for an increased daily allotment of requests, as well as to receive catalog data and precomputed basic statistics returned with your request.</p>
+
+<p>The syntax is largely the same as for version 1.0, with "v2" replacing "v1" in the url, and the additional catalog/stats requests provided as additional attributes in the payload for the POST request.  For example, if we modify the previous example to return catalog and stats info:
+
+<p><pre class="code">var baseURL = 'http://api.bls.gov/publicAPI/v2/timeseries/data/';
+var regkey = 'yourkeyhere';
+var req = new XMLHttpRequest();
+var payload = {seriesid:['APUA320703112', 'APUA104703112', 'APUA427703112'], startyear: 2003, endyear: 2012,
+	catalog: true, calculations: true, annualaverage: true, registrationKey: regkey};
+req.open('POST', baseURL, true);
+req.setRequestHeader('Content-Type', 'application/json');
+var res = [];
+req.addEventListener('load',function(){
+	if (req.status >= 200 && req.status < 400){
+		res = JSON.parse(req.responseText).Results.series;
+	} else {
+		console.log("Error in network request: " + request.statusText);
+	}
+});
+req.send(JSON.stringify(payload));</pre></p>
+
+<h2>Next Steps</h2>
+<p>If you're developing a program or website to be utilized by clients of your own, it is unlikely that you'll want to place the burden of looking up series ID codes on them.  So utilizing a more user-friendly UI will be key.  There is no official (as in, made by BLS) such UI, but a few free, more specialized interfaces do exist, for example <a href="https://github.com/fcocquemas/bulast">this R package</a> for pulling BLS API data into R.  If you find yourself needing to create your own UI, the links to the <a href="http://www.bls.gov/help/hlpforma.htm">Series ID Formats</a> are in a rigid, tab-delimited table format, which will give your program as much structure as one can get when working with this API.  Unfortunately, unrelated types of data returned by the BLS often have wildly different syntaxes for ID codes.</p>
+
+<p>While Version 2.0 of the BLS API provides for returning some basic stats, you might want to do much more analysis on the data.  Consider using a higher-level, specialized, programming language to accomplish this, such as Matlab or R.  For example, <a href="https://github.com/micahjsmith/bls-matlab#readme">this Matlab package</a> allows for pulling BLS API into Matlab.  Some useful pages for working with this data in Matlab:</p>
+<ul>
+<li> <a href="https://www.mathworks.com/help/matlab/data_analysis/time-series-objects.html">Creating Time Series objects</a>
+<li> <a href="https://www.mathworks.com/help/matlab/data_analysis/time-series-objects.html#brenqws-19">Plotting a Time Series object</a>
+<li> <a href="https://www.mathworks.com/help/matlab/descriptive-statistics-using-objects.html">Performing statistical analysis on Time Series objects</a>
+<li> <a href="https://www.mathworks.com/help/econ/arima-class.html">ARIMA</a>: useful for forecasting future values of a time series
+</ul>
+
+<p>That should be all you need to get started!  Happy coding!</p>
+</body>
+</html>
